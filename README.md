@@ -1,26 +1,19 @@
-# Yorliq OCR (Android ilova)
+# Yorliq OCR (Android ilova) — kalitsiz, internetsiz
 
-Telefonda yorliq rasmini oladi, Claude o'qiydi, natija ilovaning ichidagi jadvalga yoziladi.
-Jadvalni Excel (.xlsx) qilib yuborish/saqlash mumkin (Google Sheets'ga ham yuklanadi).
+Telefonda yorliq rasmini oladi, matnni telefonning o'zida o'qiydi (Tesseract OCR, rus + ingliz),
+maydonlarga ajratadi va ilova ichidagi jadvalga yozadi. API kalit va internet kerak emas.
+Jadvalni Excel (.xlsx) qilib yuborish mumkin (Google Sheets'da ham ochiladi).
 
-## APK olish (kompyuterga Android Studio kerak emas)
+## Ishlatish
+1. **Skaner** → **Jonli kamera**: yorliqni ramkaga tuting, qimirlamay tursa o'zi suratga oladi (yoki tugmani bosing). Bir nechta yorliqni ketma-ket oling → **Tayyor** → o'qish o'zi boshlanadi. Jonli kamera ochilmasa, oddiy kamera/Galereya ishlatiladi. (Birinchi o'qish 10–30 soniya ko'proq ketishi mumkin.)
+2. Natijani rasm bilan solishtiring. Xato bo'lsa maydonni tuzating (Цвет / Размер / Кол-во qatorlarini yorliqdagidek yozing).
+3. **Jadvalga qo'shish**. Yorliq o'qilmasa — **Qo'lda kiritish**.
+4. **Jadval** → katakni bossangiz tahrirlanadi → **Excel (.xlsx)**.
 
-1. github.com'da yangi **private** repo oching.
-2. Shu papkadagi hamma narsani (`.github` papkasi bilan) repoga `main` branch'ga yuklang.
-   (`git init && git add . && git commit -m init && git branch -M main && git remote add origin <repo> && git push -u origin main`)
-3. Repo'da **Actions** → **Build APK**. Push'dan keyin o'zi ishga tushadi (5–10 daqiqa). Kerak bo'lsa **Run workflow** ni bosing.
-4. Tugagach, ish ichidagi **Artifacts → yorliq-apk** ni yuklab oling, ZIP ichidan `app-debug.apk` chiqadi.
-5. APK'ni telefonga o'tkazing va o'rnating (Sozlamalar'da "noma'lum manbadan o'rnatish"ga ruxsat bering).
+## APK yig'ish
+GitHub Actions (`.github/workflows/build-apk.yml`) `npm ci`, `npm test`, `npm run build`, `cap add android`, **`node scripts/patch-android.mjs`** (kamera ruxsati), Gradle bilan APK yig'adi.
 
-## Birinchi ishga tushirish
-
-1. Ilova → **Sozlama** → Anthropic API kalitni kiriting → **Kalitni tekshirish** → **Saqlash**.
-2. **Skaner** → Kamera yoki Galereya → **O'qish**.
-3. Tekshirib, kerak bo'lsa maydonlarni tuzating → **Jadvalga qo'shish**.
-4. **Jadval** → katakni bossangiz tahrirlanadi, ✕ — qatorni o'chiradi, **Excel (.xlsx)** — fayl yuboradi.
-
-## Mahalliy tekshirish
-
+## Mahalliy
     npm install
-    npm test        # o'qish/tekshirish mantig'i testlari
-    npm run build
+    npm test
+    npm run build   # OCR fayllarini (public/ocr) avtomatik nusxalaydi

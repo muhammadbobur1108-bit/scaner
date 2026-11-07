@@ -58,7 +58,7 @@ export function validateLabel(label) {
     const tag = `Rang${c.pos ? " #" + c.pos : ""}`;
     if (!c.cvet) issues.push(`${tag}: Цвет o'qilmadi`);
     if (c.sizes.length === 0) issues.push(`${tag}: o'lchamlar yo'q`);
-    if (c.sizes.some((z) => z.kol_vo === null)) {
+    if (c.sizes.some((z) => z.kol_vo === null || z.razmer === "")) {
       issues.push(`${tag}: o'lcham va son soni mos kelmadi`);
       grandKnown = false;
       continue;
