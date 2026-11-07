@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "prebuild": "node scripts/copy-ocr-assets.mjs",
     "build": "vite build",
     "test": "node test/logic.test.mjs"
   },
@@ -16,6 +17,9 @@
     "@capacitor/filesystem": "^6.0.2",
     "@capacitor/preferences": "^6.0.3",
     "@capacitor/share": "^6.0.3",
+    "@tesseract.js-data/eng": "^1.0.0",
+    "@tesseract.js-data/rus": "^1.0.0",
+    "tesseract.js": "^5.1.1",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
