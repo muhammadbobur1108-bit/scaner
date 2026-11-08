@@ -67,7 +67,7 @@ export const qtyToText = (c) => c.sizes.map((s) => s.kol_vo ?? "").join(" + ") +
 function groupRows(lines) {
   const items = lines
     .filter((l) => l.text && l.bbox)
-    .map((l) => ({ text: l.text, x0: l.bbox.x0, cy: (l.bbox.y0 + l.bbox.y1) / 2, h: Math.max(1, l.bbox.y1 - l.bbox.y0) }))
+    .map((l) => ({ text: l.text, bbox: l.bbox, x0: l.bbox.x0, cy: (l.bbox.y0 + l.bbox.y1) / 2, h: Math.max(1, l.bbox.y1 - l.bbox.y0) }))
     .sort((a, b) => a.cy - b.cy);
   const rows = [];
   for (const it of items) {
@@ -96,7 +96,16 @@ const num = (s) => {
   return m ? Number(m[0].replace(",", ".")) : null;
 };
 
-export function parseLines(lines) {
+const union = (items) => ({
+  x0: Math.min(...items.map((i) => i.bbox.x0)), y0: Math.min(...items.map((i) => i.bbox.y0)),
+  x1: Math.max(...items.map((i) => i.bbox.x1)), y1: Math.max(...items.map((i) => i.bbox.y1)),
+});
+
+export const parseLines = (lines) => parseLinesDetailed(lines).label;
+
+// label + trace: qaysi maydon rasmning qaysi qismidan o'qilgani (Lens kabi ko'rsatish uchun)
+export function parseLinesDetailed(lines) {
+  const trace = [];
   const label = emptyLabel();
   const rows = groupRows(lines);
   const allText = lines.map((l) => l.text).join("\n");
@@ -113,6 +122,8 @@ export function parseLines(lines) {
     if (key === null) continue;
     const keyText = row.items[ki].text;
     const value = clean(row.items.slice(ki + 1).map((i) => i.text).join(" "));
+    const valItems = row.items.slice(ki + (key === "sert" ? 0 : 1));
+    trace.push({ field: key, bbox: union(valItems.length ? valItems : [row.items[ki]]) });
 
     switch (key) {
       case "tara": label.tara_no = orNull(value); break;
@@ -147,7 +158,7 @@ export function parseLines(lines) {
     .map((b, i) => buildColor(b.cvet, b.sz, b.qty, i + 1));
 
   label.is_blank_template = !(label.tara_no || label.zakaz || label.artikul || label.naimenovanie || label.colors.length);
-  return label;
+  return { label, trace };
 }
 
 // Natija qanchalik to'liq o'qilganini baholaydi (ikki urinishdan yaxshisini tanlash uchun)

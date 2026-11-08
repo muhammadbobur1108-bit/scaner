@@ -46,27 +46,51 @@ export async function openLiveCamera(onShot) {
 
     const setStatus = (t) => { status.textContent = t; };
 
-    function capture() {
+    const track = stream.getVideoTracks()[0];
+    const ic = typeof ImageCapture !== "undefined" ? new ImageCapture(track) : null;
+    let capturing = false;
+    const blobToB64 = (blob) => new Promise((res, rej) => {
+      const r = new FileReader();
+      r.onload = () => res(String(r.result).split(",")[1]);
+      r.onerror = () => rej(new Error("Rasmni o'qib bo'lmadi"));
+      r.readAsDataURL(blob);
+    });
+
+    // Asl rasm: iloji bo'lsa kameraning to'liq o'lchamli fotosi, bo'lmasa videokadr (hech qanday kichraytirish/qirqishsiz)
+    async function capture() {
+      if (capturing) return;
       const vw = video.videoWidth, vh = video.videoHeight;
       if (!vw || !vh) return;
-      const s = Math.min(1, 2200 / Math.max(vw, vh));
-      const c = document.createElement("canvas");
-      c.width = Math.round(vw * s);
-      c.height = Math.round(vh * s);
-      c.getContext("2d").drawImage(video, 0, 0, c.width, c.height);
-      const b64 = c.toDataURL("image/jpeg", 0.9).split(",")[1];
-      count++;
-      onShot(b64, "image/jpeg", count);
+      capturing = true;
       tracker.disarm();
-      doneBtn.textContent = `Tayyor (${count})`;
+      setStatus("Suratga olinmoqda...");
       flash.classList.add("on");
       setTimeout(() => flash.classList.remove("on"), 150);
       navigator.vibrate?.(60);
-      msgUntil = performance.now() + 2000;
-      setStatus(`✓ Suratga olindi (${count}). Keyingi yorliqni tuting`);
+      try {
+        let blob = null;
+        if (ic) { try { blob = await ic.takePhoto(); } catch { blob = null; } }
+        if (!blob) {
+          const c = document.createElement("canvas");
+          c.width = vw; c.height = vh;
+          c.getContext("2d").drawImage(video, 0, 0);
+          blob = await new Promise((r) => c.toBlob(r, "image/jpeg", 0.95));
+        }
+        const b64 = await blobToB64(blob);
+        count++;
+        onShot({ b64, mime: blob.type || "image/jpeg", count });
+        doneBtn.textContent = `Tayyor (${count})`;
+        msgUntil = performance.now() + 2500;
+        setStatus(`✓ Suratga olindi (${count}), fonda o'qilmoqda. Keyingi yorliqni tuting`);
+      } catch (e) {
+        setStatus("Suratga olib bo'lmadi: " + (e.message || e));
+      } finally {
+        capturing = false;
+      }
     }
 
     const timer = setInterval(() => {
+      if (capturing) return;
       const now = performance.now();
       const dt = now - last;
       last = now;
