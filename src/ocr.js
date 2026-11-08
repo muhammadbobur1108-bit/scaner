@@ -1,4 +1,5 @@
 import { createWorker, PSM } from "tesseract.js";
+import { get, set } from "idb-keyval";
 import { parseLines, scoreLabel, findModelCode } from "./parse.js";
 import { normalizeLabel } from "./validate.js";
 
@@ -9,28 +10,58 @@ const base = () => new URL("ocr/", document.baseURI).href;
 const STATUS_TEXT = {
   "loading tesseract core": "OCR dvigateli yuklanmoqda...",
   "initializing tesseract": "OCR ishga tushmoqda...",
-  "loading language traineddata": "Til fayllari yuklanmoqda...",
+  "loading language traineddata": "Til fayllari tayyorlanmoqda...",
   "initializing api": "OCR tayyorlanmoqda...",
 };
 
+const withTimeout = (p, ms, msg) =>
+  Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error(msg)), ms))]);
+
+// Til fayllarini asosiy oqimdan o'zimiz yuklab, Tesseract keshiga (IndexedDB) joylaymiz.
+// Android WebView'da worker ichidan fayl yuklash ba'zan qotib qoladi — shuning uchun worker faqat keshdan o'qiydi.
+async function preloadLang(code) {
+  const key = `./${code}.traineddata`;
+  const have = await get(key).catch(() => undefined);
+  if (have && have.byteLength > 1_000_000) return;
+  const url = base() + `${code}.traineddata`;
+  const resp = await withTimeout(fetch(url), 60000, `${code} til fayli yuklanmadi (vaqt tugadi)`);
+  if (!resp.ok) throw new Error(`${code} til fayli topilmadi (HTTP ${resp.status}): ${url}`);
+  const data = new Uint8Array(await resp.arrayBuffer());
+  if (data.length < 1_000_000) throw new Error(`${code} til fayli buzuq (${data.length} bayt)`);
+  await set(key, data);
+}
+
 function getWorker() {
   if (!workerPromise) {
-    workerPromise = createWorker("rus+eng", 1, {
-      workerPath: base() + "worker.min.js",
-      corePath: base(),
-      langPath: base(),
-      gzip: true,
-      cacheMethod: "none",
-      workerBlobURL: false,
-      logger: (m) => {
-        if (!statusCb) return;
-        if (STATUS_TEXT[m.status]) statusCb(STATUS_TEXT[m.status]);
-        else if (m.status === "recognizing text") statusCb(`Matn o'qilmoqda ${Math.round((m.progress ?? 0) * 100)}%`);
-      },
-    }).then(async (w) => {
+    let lastStatus = "boshlanmoqda";
+    let rejectEarly;
+    const early = new Promise((_, rej) => { rejectEarly = rej; });
+    const create = (async () => {
+      statusCb?.(STATUS_TEXT["loading language traineddata"]);
+      await preloadLang("rus");
+      await preloadLang("eng");
+      const w = await createWorker("rus+eng", 1, {
+        workerPath: base() + "worker.min.js",
+        corePath: base(),
+        langPath: base(),
+        gzip: false,
+        workerBlobURL: false,
+        errorHandler: (e) => rejectEarly(new Error("OCR xatosi: " + (e?.message || e))),
+        logger: (m) => {
+          lastStatus = m.status || lastStatus;
+          if (!statusCb) return;
+          if (STATUS_TEXT[m.status]) statusCb(STATUS_TEXT[m.status]);
+          else if (m.status === "recognizing text") statusCb(`Matn o'qilmoqda ${Math.round((m.progress ?? 0) * 100)}%`);
+        },
+      });
       await w.setParameters({ tessedit_pageseg_mode: PSM.SPARSE_TEXT, preserve_interword_spaces: "1" });
       return w;
-    });
+    })();
+    workerPromise = Promise.race([
+      create,
+      early,
+      new Promise((_, rej) => setTimeout(() => rej(new Error(`OCR yuklanmadi (3 daqiqa o'tdi). Oxirgi qadam: ${lastStatus}`)), 180000)),
+    ]);
     workerPromise.catch(() => { workerPromise = null; });
   }
   return workerPromise;
@@ -107,8 +138,21 @@ const toLines = (r) =>
 
 // Rasmdan yorliqni o'qiydi (internet va API kalit kerak emas)
 export async function ocrImage(b64, mime, onStatus) {
-  statusCb = onStatus;
-  onStatus?.("OCR tayyorlanmoqda...");
+  const t0 = Date.now();
+  let msg = "OCR tayyorlanmoqda...";
+  const show = () => onStatus?.(`${msg} (${Math.round((Date.now() - t0) / 1000)} s)`);
+  statusCb = (m) => { msg = m; show(); };
+  const ticker = setInterval(show, 1000);
+  try {
+    return await ocrInner(b64, mime, (m) => statusCb(m));
+  } finally {
+    clearInterval(ticker);
+    statusCb = null;
+  }
+}
+
+async function ocrInner(b64, mime, onStatus) {
+  onStatus("OCR tayyorlanmoqda...");
   const w = await getWorker();
   const img = await loadImage(b64, mime);
 
@@ -128,6 +172,5 @@ export async function ocrImage(b64, mime, onStatus) {
     const r = await w.recognize(makeCanvas(img, { rotate: true }));
     best.label.model_kod = findModelCode(toLines(r).map((l) => l.text).join("\n"));
   }
-  statusCb = null;
   return normalizeLabel(best.label);
 }
